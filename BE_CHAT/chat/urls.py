@@ -3,6 +3,9 @@ from . import views
 
 # chat 앱의 URL 라우팅 설정
 urlpatterns = [
+    # 웹 UI (임시 프론트엔드)
+    path('', views.chat_index, name='chat-index'),  # 채팅 메인 화면
+    
     # MSA 외부 제공 API (다른 서비스에서 호출)
     path('conversations/<uuid:id>/', views.ConversationDetailView.as_view(), name='conversation-detail'),
     

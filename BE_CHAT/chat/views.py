@@ -1,7 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.db.models import Q
 from .models import Conversation, Message, DeliveryReceipt
 from .serializers import ConversationSerializer, MessageSerializer, DeliveryReceiptSerializer
@@ -114,3 +114,12 @@ def mark_message_as_read(request, message_id):
     
     serializer = DeliveryReceiptSerializer(receipt)
     return Response(serializer.data)
+
+
+def chat_index(request):
+    """
+    채팅 메인 화면 - 간단한 웹 UI 제공
+    Django 템플릿을 사용한 기본적인 채팅 인터페이스
+    프론트엔드 개발 전까지 임시로 사용
+    """
+    return render(request, 'chat/index.html')

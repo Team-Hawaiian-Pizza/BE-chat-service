@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>채팅 서비스</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: #007bff;
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+        }
+        .user-section {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .user-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .conversations-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 5px;
+        }
+        .conversation-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .conversation-item:hover {
+            background: #f8f9fa;
+        }
+        .conversation-item.active {
+            background: #e7f3ff;
+        }
+        .chat-area {
+            display: none;
+            height: 400px;
+            border: 1px solid #eee;
+            margin: 20px;
+            border-radius: 5px;
+            flex-direction: column;
+        }
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 70%;
+        }
+        .message.sent {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        .message.received {
+            background: #e9ecef;
+            color: #333;
+        }
+        .message-input {
+            display: flex;
+            padding: 20px;
+            border-top: 1px solid #eee;
+            gap: 10px;
+        }
+        .status {
+            padding: 10px 20px;
+            background: #d4edda;
+            color: #155724;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>1대1 채팅 서비스 (테스트)</h1>
+        </div>
+        
+        <div class="user-section">
+            <h3>사용자 설정</h3>
+            <div class="user-input">
+                <input type="text" id="userId" placeholder="사용자 ID (예: user1)" value="user1">
+                <button onclick="setUser()">설정</button>
+            </div>
+            
+            <div class="user-input">
+                <input type="text" id="otherId" placeholder="대화할 상대 ID (예: user2)">
+                <button onclick="createConversation()">대화방 생성</button>
+            </div>
+            
+            <div id="status" class="status"></div>
+            
+            <h4>내 대화방 목록</h4>
+            <div id="conversationsList" class="conversations-list">
+                <div style="padding: 20px; text-align: center; color: #666;">
+                    대화방이 없습니다
+                </div>
+            </div>
+        </div>
+        
+        <div id="chatArea" class="chat-area">
+            <div id="messagesContainer" class="messages-container"></div>
+            <div class="message-input">
+                <input type="text" id="messageInput" placeholder="메시지를 입력하세요..." onkeypress="if(event.key==='Enter') sendMessage()">
+                <button onclick="sendMessage()">전송</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = '';
+        let currentConversation = null;
+        let ws = null;
+
+        // 사용자 설정
+        function setUser() {
+            currentUser = document.getElementById('userId').value.trim();
+            if (currentUser) {
+                showStatus('사용자 설정 완료: ' + currentUser);
+                loadConversations();
+            }
+        }
+
+        // 대화방 생성
+        async function createConversation() {
+            if (!currentUser) {
+                showStatus('먼저 사용자 ID를 설정해주세요.', 'error');
+                return;
+            }
+            
+            const otherId = document.getElementById('otherId').value.trim();
+            if (!otherId) {
+                showStatus('대화할 상대 ID를 입력해주세요.', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/chat/conversations/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        participant1_id: currentUser,
+                        participant2_id: otherId
+                    })
+                });
+
+                if (response.ok) {
+                    const conversation = await response.json();
+                    showStatus('대화방이 생성되었습니다.');
+                    document.getElementById('otherId').value = '';
+                    loadConversations();
+                } else {
+                    showStatus('대화방 생성에 실패했습니다.', 'error');
+                }
+            } catch (error) {
+                showStatus('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+
+        // 대화방 목록 로드
+        async function loadConversations() {
+            if (!currentUser) return;
+
+            try {
+                const response = await fetch(`/api/chat/users/${currentUser}/conversations/`);
+                const conversations = await response.json();
+                
+                const listContainer = document.getElementById('conversationsList');
+                
+                if (conversations.length === 0) {
+                    listContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">대화방이 없습니다</div>';
+                    return;
+                }
+
+                listContainer.innerHTML = conversations.map(conv => {
+                    const otherUser = conv.participant1_id === currentUser ? conv.participant2_id : conv.participant1_id;
+                    const lastMessage = conv.last_message ? conv.last_message.content.substring(0, 30) + '...' : '메시지가 없습니다';
+                    
+                    return `
+                        <div class="conversation-item" onclick="openConversation('${conv.id}', '${otherUser}')">
+                            <strong>${otherUser}</strong><br>
+                            <small style="color: #666;">${lastMessage}</small>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                showStatus('대화방 목록을 불러오는데 실패했습니다.', 'error');
+            }
+        }
+
+        // 대화방 열기
+        async function openConversation(conversationId, otherUser) {
+            currentConversation = conversationId;
+            
+            // 활성 대화방 표시
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // 채팅 영역 표시
+            document.getElementById('chatArea').style.display = 'flex';
+            
+            // 기존 메시지 로드
+            await loadMessages();
+            
+            showStatus(`${otherUser}와의 채팅을 시작합니다.`);
+        }
+
+        // 메시지 목록 로드
+        async function loadMessages() {
+            if (!currentConversation) return;
+
+            try {
+                const response = await fetch(`/api/chat/conversations/${currentConversation}/messages/`);
+                const messages = await response.json();
+                
+                const messagesContainer = document.getElementById('messagesContainer');
+                messagesContainer.innerHTML = messages.map(msg => {
+                    const isSent = msg.sender_id === currentUser;
+                    return `
+                        <div class="message ${isSent ? 'sent' : 'received'}">
+                            <strong>${msg.sender_id}:</strong> ${msg.content}
+                            <br><small>${new Date(msg.created_at).toLocaleString()}</small>
+                        </div>
+                    `;
+                }).join('');
+                
+                // 스크롤을 맨 아래로
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            } catch (error) {
+                showStatus('메시지를 불러오는데 실패했습니다.', 'error');
+            }
+        }
+
+        // 메시지 전송
+        async function sendMessage() {
+            if (!currentConversation || !currentUser) {
+                showStatus('대화방을 먼저 선택해주세요.', 'error');
+                return;
+            }
+
+            const messageInput = document.getElementById('messageInput');
+            const content = messageInput.value.trim();
+            
+            if (!content) return;
+
+            try {
+                const response = await fetch(`/api/chat/conversations/${currentConversation}/messages/send/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sender_id: currentUser,
+                        content: content,
+                        message_type: 'text'
+                    })
+                });
+
+                if (response.ok) {
+                    messageInput.value = '';
+                    await loadMessages(); // 메시지 새로고침
+                } else {
+                    showStatus('메시지 전송에 실패했습니다.', 'error');
+                }
+            } catch (error) {
+                showStatus('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+
+        // 상태 메시지 표시
+        function showStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type === 'error' ? 'error' : ''}`;
+            statusDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // 페이지 로드 시 초기화
+        window.onload = function() {
+            setUser(); // 기본 사용자 설정
+        };
+    </script>
+</body>
+</html>
