@@ -1,0 +1,9 @@
+/myenv
+__pycache__
+db.sqlite3
+
+test_data.json
+db.sqlite3
+migrations
+BE_CHAT/db.sqlite3
+chat/__pycache__
