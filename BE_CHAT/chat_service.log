@@ -1,0 +1,132 @@
+INFO 2025-08-20 12:38:51,527 events 51583 6188904448 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:38:51.527479",
+  "data": {
+    "message_id": "dee1763f-a848-4516-af9f-61a8939d7af5",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user1",
+    "content": "\u314e\u3147",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:38:51.525412+00:00"
+  }
+}
+INFO 2025-08-20 12:39:03,310 events 51583 6188904448 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:39:03.310796",
+  "data": {
+    "message_id": "135ce68b-3c34-473c-a1e5-c6f8fa683386",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user1",
+    "content": "\u3147\u3147",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:39:03.307592+00:00"
+  }
+}
+INFO 2025-08-20 12:46:25,761 events 52913 6214086656 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:46:25.760989",
+  "data": {
+    "message_id": "cf23ad66-7a09-4f79-8822-d234126f3fbb",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user2",
+    "content": "\u314e\u3147",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:46:25.754974+00:00"
+  }
+}
+INFO 2025-08-20 12:46:28,275 events 52913 6197260288 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:46:28.275014",
+  "data": {
+    "message_id": "708843d7-9431-415a-9f30-6a145cfbba10",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user2",
+    "content": "\u314e\u3147",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:46:28.272921+00:00"
+  }
+}
+INFO 2025-08-20 12:46:36,323 events 52913 6197260288 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:46:36.323267",
+  "data": {
+    "message_id": "ad80f375-18bb-493b-a928-9a904c002418",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user1",
+    "content": "\u314e\u3147",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:46:36.321061+00:00"
+  }
+}
+INFO 2025-08-20 12:46:39,954 events 52913 6197260288 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:46:39.954264",
+  "data": {
+    "message_id": "c56fbf96-c66e-4fb4-a5f1-5f5f83f5ccf6",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user1",
+    "content": "\ub2c8 \uba38\ud558\ub0d0",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:46:39.951012+00:00"
+  }
+}
+INFO 2025-08-20 12:46:41,795 events 52913 6197260288 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:46:41.795484",
+  "data": {
+    "message_id": "ceb56276-c110-4ddb-906d-5f3640f28ea5",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user1",
+    "content": "\uc774\uc0c8\uae30\uc57c",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:46:41.792956+00:00"
+  }
+}
+INFO 2025-08-20 12:54:38,162 events 53986 6110146560 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:54:38.161927",
+  "data": {
+    "message_id": "2d04d86b-cbe3-4871-ac06-ec6222d5af9e",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user1",
+    "content": "\u314f",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:54:38.156943+00:00"
+  }
+}
+INFO 2025-08-20 12:55:46,077 events 53986 6110146560 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:55:46.076965",
+  "data": {
+    "message_id": "9a0dee4c-1772-4cd2-8720-21947943a1dc",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user2",
+    "content": "\u314f",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:55:46.071728+00:00"
+  }
+}
+INFO 2025-08-20 12:55:48,711 events 53986 6110146560 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:55:48.711076",
+  "data": {
+    "message_id": "26556342-a3b5-4a6a-89e0-5c4c7a857ab0",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user2",
+    "content": "\u3161\u314f\u3161\u314f",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:55:48.705738+00:00"
+  }
+}
+INFO 2025-08-20 12:55:52,138 events 53986 6110146560 Publishing event: {
+  "event_type": "message.created",
+  "timestamp": "2025-08-20T12:55:52.138360",
+  "data": {
+    "message_id": "26096fa5-1561-4ca9-833b-37f242d70cdf",
+    "conversation_id": "e010a4eb-1193-4d43-8e59-17d8a29b0ffc",
+    "sender_id": "user2",
+    "content": ",",
+    "message_type": "text",
+    "created_at": "2025-08-20T03:55:52.133444+00:00"
+  }
+}

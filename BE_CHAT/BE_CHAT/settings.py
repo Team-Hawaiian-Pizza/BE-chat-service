@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,14 +21,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-i&5r)7^m87q$*$(onc2d(eq0!+z0iav0&pr%xoes!+j6f=n%73'
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-i&5r)7^m87q$*$(onc2d(eq0!+z0iav0&pr%xoes!+j6f=n%73')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# 환경변수로 제어하도록 수정 예정
-DEBUG = True
+DEBUG = config('DEBUG', default=True, cast=bool)
 
 # 배포시에는 실제 도메인으로 변경해야 함
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']  # 임시로 모든 호스트 허용
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,*').split(',')
 
 
 # Application definition
@@ -83,7 +83,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
+            "hosts": [(config('REDIS_HOST', default='127.0.0.1'), config('REDIS_PORT', default=6379, cast=int))],
             "capacity": 1500,  # 메시지 큐 용량
             "expiry": 60,      # 메시지 만료 시간
         },
@@ -122,8 +122,16 @@ REST_FRAMEWORK = {
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': config('DB_ENGINE', default='django.db.backends.sqlite3'),
+        'NAME': config('DB_NAME', default=BASE_DIR / 'db.sqlite3'),
+        'USER': config('DB_USER', default=''),
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': config('DB_HOST', default=''),
+        'PORT': config('DB_PORT', default=''),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        } if config('DB_ENGINE', default='').startswith('mysql') else {},
     }
 }
 
