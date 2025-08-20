@@ -7,3 +7,4 @@ db.sqlite3
 migrations
 BE_CHAT/db.sqlite3
 chat/__pycache__
+nginx.conf
