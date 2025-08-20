@@ -35,8 +35,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # WebSocket 연결 수락
         await self.accept()
         
-        # 연결 즉시 기존 대화 기록 전송
-        await self.send_conversation_history()
+        # 연결 즉시 최근 메시지만 전송 (페이지네이션)
+        await self.send_recent_messages()
 
     async def disconnect(self, close_code):
         """클라이언트 WebSocket 연결 해제 처리"""
@@ -60,6 +60,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.handle_mark_as_read(text_data_json)  # 읽음 처리
             elif message_type == 'typing':
                 await self.handle_typing(text_data_json)  # 타이핑 상태
+            elif message_type == 'load_more_messages':
+                await self.handle_load_more_messages(text_data_json)  # 이전 메시지 로드
                 
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({
@@ -205,7 +207,69 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def publish_message_event(self, message):
         publish_message_created_event(message)
 
+    async def send_recent_messages(self, limit=20):
+        """최근 메시지들만 전송 (WebSocket 연결시)"""
+        messages = await self.get_recent_messages(self.conversation_id, limit)
+        await self.send(text_data=json.dumps({
+            'type': 'recent_messages',
+            'messages': messages,
+            'has_more': len(messages) == limit  # 더 있는지 여부
+        }))
+    
+    async def handle_load_more_messages(self, data):
+        """이전 메시지들 로드 요청 처리"""
+        before_message_id = data.get('before_message_id')
+        limit = data.get('limit', 20)
+        
+        if limit > 50:  # 웹소켓에서는 제한을 더 작게
+            limit = 50
+            
+        if before_message_id:
+            messages = await self.get_messages_before(self.conversation_id, before_message_id, limit)
+            await self.send(text_data=json.dumps({
+                'type': 'more_messages',
+                'messages': messages,
+                'has_more': len(messages) == limit
+            }))
+        else:
+            await self.send(text_data=json.dumps({
+                'error': 'before_message_id가 필요합니다.'
+            }))
+
+    @database_sync_to_async
+    def get_recent_messages(self, conversation_id, limit=20):
+        """최근 메시지들 조회"""
+        try:
+            conversation = Conversation.objects.get(id=conversation_id)
+            messages = conversation.messages.filter(is_deleted=False).order_by('-created_at')[:limit]
+            # 시간 순으로 다시 정렬 (최신이 아래로)
+            messages = list(reversed(messages))
+            serializer = MessageSerializer(messages, many=True)
+            return serializer.data
+        except Conversation.DoesNotExist:
+            return []
+
+    @database_sync_to_async
+    def get_messages_before(self, conversation_id, before_message_id, limit=20):
+        """특정 메시지 이전의 메시지들 조회"""
+        try:
+            conversation = Conversation.objects.get(id=conversation_id)
+            before_message = Message.objects.get(id=before_message_id, conversation=conversation)
+            
+            messages = conversation.messages.filter(
+                is_deleted=False,
+                created_at__lt=before_message.created_at
+            ).order_by('-created_at')[:limit]
+            
+            # 시간 순으로 다시 정렬
+            messages = list(reversed(messages))
+            serializer = MessageSerializer(messages, many=True)
+            return serializer.data
+        except (Conversation.DoesNotExist, Message.DoesNotExist):
+            return []
+
     async def send_conversation_history(self):
+        """기존 메서드 유지 (하위 호환성)"""
         messages = await self.get_conversation_messages(self.conversation_id)
         await self.send(text_data=json.dumps({
             'type': 'conversation_history',

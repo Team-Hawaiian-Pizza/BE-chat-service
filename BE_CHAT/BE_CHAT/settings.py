@@ -23,9 +23,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-i&5r)7^m87q$*$(onc2d(eq0!+z0iav0&pr%xoes!+j6f=n%73'
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# 환경변수로 제어하도록 수정 예정
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# 배포시에는 실제 도메인으로 변경해야 함
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']  # 임시로 모든 호스트 허용
 
 
 # Application definition
@@ -39,10 +41,12 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'channels',
+    'corsheaders',  # CORS 지원
     'chat',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # CORS는 맨 위에
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -72,20 +76,44 @@ TEMPLATES = [
 WSGI_APPLICATION = 'BE_CHAT.wsgi.application'
 ASGI_APPLICATION = 'BE_CHAT.asgi.application'
 
-# Channels
+# Channels 설정
+# Redis 서버가 없으면 InMemoryChannelLayer로 폴백
+# 실제 배포에서는 Redis 필수
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
             "hosts": [('127.0.0.1', 6379)],
+            "capacity": 1500,  # 메시지 큐 용량
+            "expiry": 60,      # 메시지 만료 시간
         },
     },
 }
 
-# Django REST Framework
+# Redis 연결 실패 시 폴백 (개발용만)
+# CHANNEL_LAYERS = {
+#     "default": {
+#         "BACKEND": "channels.layers.InMemoryChannelLayer"
+#     }
+# }
+
+# Django REST Framework 설정
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 20
+    'PAGE_SIZE': 20,
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+    ],
+    # 나중에 인증 추가할 때 사용
+    # 'DEFAULT_AUTHENTICATION_CLASSES': [
+    #     'rest_framework.authentication.TokenAuthentication',
+    # ],
+    # 'DEFAULT_PERMISSION_CLASSES': [
+    #     'rest_framework.permissions.IsAuthenticated',
+    # ],
 }
 
 
@@ -99,18 +127,22 @@ DATABASES = {
     }
 }
 
-# MySQL 설정 (나중에 사용할 때 주석 해제)
+# MySQL 설정 (배포시 활성화)
+# 환경변수로 관리하도록 수정 예정
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.mysql',
 #         'NAME': 'chat_db',
-#         'USER': 'root',
-#         'PASSWORD': 'password',
+#         'USER': 'chat_service',  # DDL에서 생성한 사용자
+#         'PASSWORD': 'chat_password_2024',  # DDL에서 설정한 비밀번호
 #         'HOST': 'localhost',
 #         'PORT': '3306',
 #         'OPTIONS': {
 #             'charset': 'utf8mb4',
+#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+#             'autocommit': True,
 #         },
+#         'CONN_MAX_AGE': 60,  # 연결 풀링
 #     }
 # }
 
@@ -155,3 +187,148 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# ==============================================
+# 추가 설정들 (배포 최적화)
+# ==============================================
+
+# CORS 설정 (프론트엔드와 통신)
+# 배포시에는 실제 프론트엔드 도메인으로 제한해야 함
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # React 개발 서버
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",  # Django 개발 서버
+    "http://127.0.0.1:8000",
+]
+
+# 개발용으로 모든 도메인 허용 (배포시 제거)
+CORS_ALLOW_ALL_ORIGINS = True
+
+# CORS 헤더 설정
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# 웹소켓 CORS 설정
+CORS_ALLOW_CREDENTIALS = True
+
+# 로깅 설정
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': 'chat_service.log',
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'chat': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'django.channels': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
+
+# 캐시 설정 (Redis 사용)
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+
+# 세션 설정
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
+SESSION_COOKIE_AGE = 86400  # 24시간
+
+# 보안 설정 (배포시 활성화)
+# SECURE_BROWSER_XSS_FILTER = True
+# SECURE_CONTENT_TYPE_NOSNIFF = True
+# X_FRAME_OPTIONS = 'DENY'
+# SECURE_HSTS_SECONDS = 31536000
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# SECURE_HSTS_PRELOAD = True
+
+# 파일 업로드 설정
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+
+# 시간대 설정
+USE_TZ = True
+TIME_ZONE = 'Asia/Seoul'
+
+# 언어 설정
+LANGUAGE_CODE = 'ko-kr'
+
+# 정적 파일 설정 (배포시 확장)
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+
+# 미디어 파일 설정 (이미지 등)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# 환경별 설정 분리 준비
+import os
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+
+if ENVIRONMENT == 'production':
+    # 프로덕션 설정들을 여기에 추가
+    DEBUG = False
+    ALLOWED_HOSTS = ['your-domain.com']  # 실제 도메인으로 변경
+    CORS_ALLOW_ALL_ORIGINS = False
+    
+    # MySQL 활성화
+    # DATABASES = {
+    #     'default': {
+    #         'ENGINE': 'django.db.backends.mysql',
+    #         'NAME': os.getenv('DB_NAME', 'chat_db'),
+    #         'USER': os.getenv('DB_USER', 'chat_service'),
+    #         'PASSWORD': os.getenv('DB_PASSWORD'),
+    #         'HOST': os.getenv('DB_HOST', 'localhost'),
+    #         'PORT': os.getenv('DB_PORT', '3306'),
+    #         'OPTIONS': {
+    #             'charset': 'utf8mb4',
+    #             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+    #         },
+    #     }
+    # }

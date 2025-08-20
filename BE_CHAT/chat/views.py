@@ -2,9 +2,13 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from django.shortcuts import get_object_or_404, render
-from django.db.models import Q
+from django.db.models import Q, Prefetch
+from django.core.paginator import Paginator
 from .models import Conversation, Message, DeliveryReceipt
-from .serializers import ConversationSerializer, MessageSerializer, DeliveryReceiptSerializer
+from .serializers import (
+    ConversationSerializer, MessageSerializer, DeliveryReceiptSerializer,
+    MessagePaginatedSerializer, ConversationDetailSerializer, MessagePagination
+)
 from .events import publish_message_created_event
 import json
 
@@ -63,13 +67,149 @@ def create_conversation(request):
 
 @api_view(['GET'])
 def conversation_messages(request, conversation_id):
-    """대화방의 메시지 목록 조회 (삭제되지 않은 메시지만)"""
+    """대화방의 메시지 목록 조회 (삭제되지 않은 메시지만) - 기존 API 유지"""
     conversation = get_object_or_404(Conversation, id=conversation_id)
     # 삭제되지 않은 메시지들만 시간순으로 조회
     messages = conversation.messages.filter(is_deleted=False).order_by('created_at')
     
     serializer = MessageSerializer(messages, many=True)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+def conversation_messages_paginated(request, conversation_id):
+    """
+    대화방의 메시지 목록 페이지네이션 조회
+    스크롤 기반 무한 로딩을 위한 API
+    최신 메시지부터 역순으로 조회 (페이스북 메신저 방식)
+    """
+    conversation = get_object_or_404(Conversation, id=conversation_id)
+    
+    # 쿼리 파라미터
+    page = request.GET.get('page', 1)
+    page_size = int(request.GET.get('page_size', 20))
+    user_id = request.GET.get('user_id')  # 읽음 상태 확인용
+    
+    # 페이지 사이즈 제한 (너무 많이 가져가는 것 방지)
+    if page_size > 100:
+        page_size = 100
+    
+    # 메시지 쿼리 - 최신부터 역순
+    # Prefetch로 delivery_receipts도 함께 가져와서 N+1 문제 해결
+    messages_queryset = conversation.messages.select_related('conversation').prefetch_related(
+        Prefetch('delivery_receipts', queryset=DeliveryReceipt.objects.all())
+    ).filter(is_deleted=False).order_by('-created_at')
+    
+    # 페이지네이션 적용
+    paginator = Paginator(messages_queryset, page_size)
+    
+    try:
+        messages_page = paginator.page(page)
+    except:
+        # 페이지가 범위를 벗어나면 빈 결과 반환
+        return Response({
+            'messages': [],
+            'has_next': False,
+            'has_previous': False,
+            'current_page': int(page),
+            'total_pages': 0,
+            'total_messages': 0
+        })
+    
+    # 직렬화 - 읽음 상태 포함
+    context = {'request': request}
+    if user_id:
+        # user_id를 request에 임시로 추가해서 serializer에서 사용
+        request.user_id = user_id
+        
+    serializer = MessagePaginatedSerializer(messages_page, many=True, context=context)
+    
+    return Response({
+        'messages': serializer.data,
+        'has_next': messages_page.has_next(),
+        'has_previous': messages_page.has_previous(),
+        'current_page': messages_page.number,
+        'total_pages': paginator.num_pages,
+        'total_messages': paginator.count,
+        'next_page': messages_page.next_page_number() if messages_page.has_next() else None,
+        'previous_page': messages_page.previous_page_number() if messages_page.has_previous() else None
+    })
+
+
+@api_view(['GET'])
+def conversation_messages_before(request, conversation_id):
+    """
+    특정 메시지 이전의 메시지들을 조회 (무한 스크롤용)
+    클라이언트에서 위로 스크롤할 때 사용
+    """
+    conversation = get_object_or_404(Conversation, id=conversation_id)
+    
+    # 쿼리 파라미터
+    before_message_id = request.GET.get('before_message_id')  # 이 메시지 이전 것들
+    limit = int(request.GET.get('limit', 20))
+    
+    if limit > 100:
+        limit = 100
+    
+    # 기준 메시지 찾기
+    try:
+        before_message = Message.objects.get(id=before_message_id, conversation=conversation)
+    except Message.DoesNotExist:
+        return Response({'error': '기준 메시지를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # 기준 메시지보다 이전 메시지들 조회
+    messages = conversation.messages.select_related('conversation').prefetch_related(
+        'delivery_receipts'
+    ).filter(
+        is_deleted=False,
+        created_at__lt=before_message.created_at  # 이전 시간
+    ).order_by('-created_at')[:limit]
+    
+    serializer = MessagePaginatedSerializer(messages, many=True)
+    
+    return Response({
+        'messages': serializer.data,
+        'has_more': len(messages) == limit,  # 더 있는지 여부
+        'oldest_message_id': messages.last().id if messages else None
+    })
+
+
+@api_view(['GET'])
+def conversation_messages_after(request, conversation_id):
+    """
+    특정 메시지 이후의 메시지들을 조회 (실시간 업데이트용)
+    클라이언트에서 새 메시지 확인할 때 사용
+    """
+    conversation = get_object_or_404(Conversation, id=conversation_id)
+    
+    # 쿼리 파라미터
+    after_message_id = request.GET.get('after_message_id')  # 이 메시지 이후 것들
+    limit = int(request.GET.get('limit', 50))
+    
+    if limit > 100:
+        limit = 100
+    
+    # 기준 메시지 찾기
+    try:
+        after_message = Message.objects.get(id=after_message_id, conversation=conversation)
+    except Message.DoesNotExist:
+        return Response({'error': '기준 메시지를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # 기준 메시지보다 이후 메시지들 조회
+    messages = conversation.messages.select_related('conversation').prefetch_related(
+        'delivery_receipts'
+    ).filter(
+        is_deleted=False,
+        created_at__gt=after_message.created_at  # 이후 시간
+    ).order_by('created_at')[:limit]
+    
+    serializer = MessagePaginatedSerializer(messages, many=True)
+    
+    return Response({
+        'messages': serializer.data,
+        'has_more': len(messages) == limit,
+        'newest_message_id': messages.last().id if messages else None
+    })
 
 
 @api_view(['POST'])
