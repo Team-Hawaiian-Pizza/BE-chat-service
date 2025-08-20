@@ -80,6 +80,37 @@
             flex: 1;
             overflow-y: auto;
             padding: 20px;
+            position: relative;
+        }
+        .load-more-button {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .load-more-button:hover {
+            background: #e9ecef;
+        }
+        .typing-indicator {
+            padding: 10px;
+            font-style: italic;
+            color: #666;
+            display: none;
+        }
+        .connection-status {
+            padding: 5px 10px;
+            background: #28a745;
+            color: white;
+            font-size: 12px;
+            border-radius: 3px;
+            margin-left: 10px;
+        }
+        .connection-status.disconnected {
+            background: #dc3545;
         }
         .message {
             margin-bottom: 15px;
@@ -121,6 +152,7 @@
     <div class="container">
         <div class="header">
             <h1>1대1 채팅 서비스 (테스트)</h1>
+            <span id="connectionStatus" class="connection-status disconnected">연결 안됨</span>
         </div>
         
         <div class="user-section">
@@ -146,18 +178,35 @@
         </div>
         
         <div id="chatArea" class="chat-area">
-            <div id="messagesContainer" class="messages-container"></div>
+            <div id="messagesContainer" class="messages-container">
+                <div id="loadMoreButton" class="load-more-button" onclick="loadMoreMessages()">
+                    이전 메시지 더보기
+                </div>
+                <div id="messagesContent"></div>
+                <div id="typingIndicator" class="typing-indicator">
+                    상대방이 입력 중입니다...
+                </div>
+            </div>
             <div class="message-input">
-                <input type="text" id="messageInput" placeholder="메시지를 입력하세요..." onkeypress="if(event.key==='Enter') sendMessage()">
+                <input type="text" id="messageInput" placeholder="메시지를 입력하세요..." 
+                       onkeypress="handleKeyPress(event)" 
+                       oninput="handleTyping()">
                 <button onclick="sendMessage()">전송</button>
             </div>
         </div>
     </div>
 
     <script>
+        // 전역 변수들
         let currentUser = '';
         let currentConversation = null;
         let ws = null;
+        let messages = [];
+        let hasMoreMessages = false;
+        let oldestMessageId = null;
+        let typingTimer = null;
+        let isTyping = false;
+        let autoRefreshInterval = null;  // 자동 새로고침용
 
         // 사용자 설정
         function setUser() {
@@ -239,6 +288,11 @@
 
         // 대화방 열기
         async function openConversation(conversationId, otherUser) {
+            // 기존 웹소켓 연결 종료
+            if (ws) {
+                ws.close();
+            }
+
             currentConversation = conversationId;
             
             // 활성 대화방 표시
@@ -250,50 +304,176 @@
             // 채팅 영역 표시
             document.getElementById('chatArea').style.display = 'flex';
             
-            // 기존 메시지 로드
-            await loadMessages();
+            // 메시지 초기화
+            messages = [];
+            document.getElementById('messagesContent').innerHTML = '';
+            document.getElementById('loadMoreButton').style.display = 'none';
+            
+            // HTTP API로 기존 메시지 로드
+            await loadMessagesHttp();
+            
+            // 웹소켓 연결 (실패해도 HTTP로 계속 작동)
+            try {
+                connectWebSocket(conversationId);
+            } catch (error) {
+                updateConnectionStatus(false);
+                showStatus('WebSocket 연결 실패. HTTP 모드로 작동합니다.', 'error');
+            }
+            
+            // WebSocket이 안 되면 자동 새로고침 시작
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                startAutoRefresh();
+                updateConnectionStatus(true); // HTTP 모드도 연결된 것으로 표시
+            }
             
             showStatus(`${otherUser}와의 채팅을 시작합니다.`);
         }
 
-        // 메시지 목록 로드
-        async function loadMessages() {
-            if (!currentConversation) return;
+        // 웹소켓 연결
+        function connectWebSocket(conversationId) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // WebSocket 서버는 현재 포트(8001)에서 실행
+            const wsUrl = `${protocol}//${window.location.host}/ws/chat/${conversationId}/`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function(event) {
+                updateConnectionStatus(true);
+                showStatus('실시간 채팅 연결됨');
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+            
+            ws.onclose = function(event) {
+                updateConnectionStatus(false);
+                showStatus('연결이 끊어졌습니다. 재연결을 시도합니다...', 'error');
+                
+                // 5초 후 재연결 시도
+                setTimeout(() => {
+                    if (currentConversation) {
+                        connectWebSocket(currentConversation);
+                    }
+                }, 5000);
+            };
+            
+            ws.onerror = function(error) {
+                updateConnectionStatus(false);
+                showStatus('웹소켓 연결 오류', 'error');
+            };
+        }
 
-            try {
-                const response = await fetch(`/api/chat/conversations/${currentConversation}/messages/`);
-                const messages = await response.json();
-                
-                const messagesContainer = document.getElementById('messagesContainer');
-                messagesContainer.innerHTML = messages.map(msg => {
-                    const isSent = msg.sender_id === currentUser;
-                    return `
-                        <div class="message ${isSent ? 'sent' : 'received'}">
-                            <strong>${msg.sender_id}:</strong> ${msg.content}
-                            <br><small>${new Date(msg.created_at).toLocaleString()}</small>
-                        </div>
-                    `;
-                }).join('');
-                
-                // 스크롤을 맨 아래로
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            } catch (error) {
-                showStatus('메시지를 불러오는데 실패했습니다.', 'error');
+        // 웹소켓 메시지 처리
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'recent_messages':
+                    // 최근 메시지들 로드
+                    messages = data.messages;
+                    hasMoreMessages = data.has_more;
+                    renderMessages();
+                    updateLoadMoreButton();
+                    scrollToBottom();
+                    break;
+                    
+                case 'chat_message':
+                    // 새 메시지 추가
+                    messages.push(data.message);
+                    renderMessages();
+                    scrollToBottom();
+                    
+                    // 읽음 처리 (내가 보낸 메시지가 아닌 경우)
+                    if (data.message.sender_id !== currentUser) {
+                        markAsRead(data.message.id);
+                    }
+                    break;
+                    
+                case 'more_messages':
+                    // 이전 메시지들 추가 (맨 앞에)
+                    const oldScrollHeight = document.getElementById('messagesContainer').scrollHeight;
+                    messages = [...data.messages, ...messages];
+                    hasMoreMessages = data.has_more;
+                    renderMessages();
+                    updateLoadMoreButton();
+                    
+                    // 스크롤 위치 유지
+                    const newScrollHeight = document.getElementById('messagesContainer').scrollHeight;
+                    document.getElementById('messagesContainer').scrollTop = newScrollHeight - oldScrollHeight;
+                    break;
+                    
+                case 'typing_status':
+                    // 타이핑 상태 표시
+                    if (data.user_id !== currentUser) {
+                        showTypingIndicator(data.is_typing);
+                    }
+                    break;
+                    
+                case 'message_read':
+                    // 읽음 상태 업데이트
+                    updateMessageReadStatus(data.message_id, data.user_id);
+                    break;
             }
+        }
+
+        // 메시지 렌더링
+        function renderMessages() {
+            const messagesContent = document.getElementById('messagesContent');
+            messagesContent.innerHTML = messages.map(msg => {
+                const isSent = msg.sender_id === currentUser;
+                return `
+                    <div class="message ${isSent ? 'sent' : 'received'}" data-message-id="${msg.id}">
+                        <strong>${msg.sender_id}:</strong> ${msg.content}
+                        <br><small>${new Date(msg.created_at).toLocaleString()}</small>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 이전 메시지 더 로드
+        function loadMoreMessages() {
+            if (!hasMoreMessages || messages.length === 0) return;
+            
+            const oldestMessage = messages[0];
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'load_more_messages',
+                    before_message_id: oldestMessage.id,
+                    limit: 20
+                }));
+            }
+        }
+
+        // 더보기 버튼 업데이트
+        function updateLoadMoreButton() {
+            const loadMoreButton = document.getElementById('loadMoreButton');
+            loadMoreButton.style.display = hasMoreMessages ? 'block' : 'none';
         }
 
         // 메시지 전송
         async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const content = messageInput.value.trim();
+            
+            if (!content) return;
             if (!currentConversation || !currentUser) {
                 showStatus('대화방을 먼저 선택해주세요.', 'error');
                 return;
             }
 
-            const messageInput = document.getElementById('messageInput');
-            const content = messageInput.value.trim();
-            
-            if (!content) return;
+            // WebSocket이 연결되어 있으면 WebSocket으로 전송
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'chat_message',
+                    sender_id: currentUser,
+                    content: content,
+                    message_type: 'text'
+                }));
+                messageInput.value = '';
+                return;
+            }
 
+            // WebSocket이 없으면 HTTP API로 전송
             try {
                 const response = await fetch(`/api/chat/conversations/${currentConversation}/messages/send/`, {
                     method: 'POST',
@@ -309,13 +489,137 @@
 
                 if (response.ok) {
                     messageInput.value = '';
-                    await loadMessages(); // 메시지 새로고침
+                    await loadMessagesHttp(); // 메시지 새로고침
+                    showStatus('메시지 전송 완료');
                 } else {
                     showStatus('메시지 전송에 실패했습니다.', 'error');
                 }
             } catch (error) {
                 showStatus('오류가 발생했습니다: ' + error.message, 'error');
             }
+        }
+
+        // HTTP API로 메시지 로드
+        async function loadMessagesHttp() {
+            if (!currentConversation) return;
+
+            try {
+                const response = await fetch(`/api/chat/conversations/${currentConversation}/messages/`);
+                const messagesData = await response.json();
+                
+                const oldMessageCount = messages.length;
+                messages = messagesData;
+                renderMessages();
+                
+                // 새 메시지가 있으면 스크롤을 아래로
+                if (messagesData.length > oldMessageCount) {
+                    scrollToBottom();
+                }
+            } catch (error) {
+                showStatus('메시지를 불러오는데 실패했습니다.', 'error');
+            }
+        }
+
+        // 자동 새로고침 시작 (WebSocket 대신)
+        function startAutoRefresh() {
+            // 기존 타이머 정리
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            
+            // 3초마다 메시지 새로고침
+            autoRefreshInterval = setInterval(async () => {
+                if (currentConversation) {
+                    await loadMessagesHttp();
+                }
+            }, 3000);
+            
+            showStatus('실시간 채팅 연결됨 (HTTP 모드)');
+        }
+
+        // 자동 새로고침 중지
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        // 키 입력 처리
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // 타이핑 처리
+        function handleTyping() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            
+            // 타이핑 시작
+            if (!isTyping) {
+                isTyping = true;
+                sendTypingStatus(true);
+            }
+            
+            // 타이핑 타이머 리셋
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(() => {
+                isTyping = false;
+                sendTypingStatus(false);
+            }, 1000);
+        }
+
+        // 타이핑 상태 전송
+        function sendTypingStatus(typing) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'typing',
+                    user_id: currentUser,
+                    is_typing: typing
+                }));
+            }
+        }
+
+        // 타이핑 인디케이터 표시
+        function showTypingIndicator(show) {
+            const indicator = document.getElementById('typingIndicator');
+            indicator.style.display = show ? 'block' : 'none';
+            
+            if (show) {
+                scrollToBottom();
+            }
+        }
+
+        // 메시지 읽음 처리
+        function markAsRead(messageId) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'mark_as_read',
+                    message_id: messageId,
+                    user_id: currentUser
+                }));
+            }
+        }
+
+        // 연결 상태 업데이트
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('connectionStatus');
+            if (connected) {
+                statusElement.textContent = '연결됨';
+                statusElement.className = 'connection-status';
+            } else {
+                statusElement.textContent = '연결 안됨';
+                statusElement.className = 'connection-status disconnected';
+            }
+        }
+
+        // 스크롤을 맨 아래로
+        function scrollToBottom() {
+            const container = document.getElementById('messagesContainer');
+            setTimeout(() => {
+                container.scrollTop = container.scrollHeight;
+            }, 100);
         }
 
         // 상태 메시지 표시
@@ -333,6 +637,13 @@
         // 페이지 로드 시 초기화
         window.onload = function() {
             setUser(); // 기본 사용자 설정
+        };
+
+        // 페이지 언로드 시 웹소켓 연결 종료
+        window.onbeforeunload = function() {
+            if (ws) {
+                ws.close();
+            }
         };
     </script>
 </body>
