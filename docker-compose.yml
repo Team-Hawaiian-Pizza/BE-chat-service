@@ -1,0 +1,88 @@
+# 채팅 서비스 Docker Compose 설정
+version: '3.8'
+
+services:
+  # 채팅 서비스 (Django)
+  chat-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=mysql
+      - REDIS_HOST=redis
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - ./logs:/app/logs
+      - ./media:/app/media
+    networks:
+      - chat-network
+
+  # WebSocket 서버 (ASGI)
+  chat-ws:
+    build: .
+    command: uvicorn BE_CHAT.asgi:application --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=mysql
+      - REDIS_HOST=redis
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - chat-network
+
+  # MySQL 데이터베이스
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: chat_db
+      MYSQL_USER: chat_service
+      MYSQL_PASSWORD: chat_password_2024
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./chat_db_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - chat-network
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # Redis (캐시 및 채널 레이어)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - chat-network
+    command: redis-server --appendonly yes
+
+  # Nginx (로드 밸런서)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./static:/var/www/static
+    depends_on:
+      - chat-api
+      - chat-ws
+    networks:
+      - chat-network
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  chat-network:
+    driver: bridge

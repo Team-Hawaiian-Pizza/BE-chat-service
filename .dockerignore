@@ -1,0 +1,68 @@
+# 민감한 정보들 (이미지에 포함하지 않음)
+**/.env
+**/.env.*
+**/secrets/
+**/keys/
+
+# 개발 환경 파일들
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/env/
+**/venv/
+**/myenv/
+**/pip-log.txt
+**/pip-delete-this-directory.txt
+
+# IDE 설정
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# 데이터베이스 파일
+**/db.sqlite3
+**/db.sqlite3-journal
+
+# 로그 파일
+**/logs/
+**/*.log
+
+# 미디어 파일 (업로드된 파일들)
+**/media/
+
+# 정적 파일 (빌드시 수집)
+**/static/
+
+# 테스트 관련
+**/.coverage
+**/htmlcov/
+**/.tox/
+**/.cache
+**/.pytest_cache/
+
+# Git 관련
+**/.git/
+**/.gitignore
+
+# 문서
+**/README.md
+**/docs/
+**/*.md
+
+# 설정 예시 파일들
+**/.env.example
+**/config.example.*
+
+# macOS
+**/.DS_Store
+
+# Windows
+**/Thumbs.db
+
+# 임시 파일
+**/tmp/
+**/temp/
