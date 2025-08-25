@@ -31,6 +31,3 @@ WaytoWay의 실시간 채팅 서비스를 위한 RESTful API 및 WebSocket 명�
 - **Gunicorn**: WSGI 서버
 - **Daphne**: ASGI 서버 (WebSocket 지원)
 
-```
-
----
